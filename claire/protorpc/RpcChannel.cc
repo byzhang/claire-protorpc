@@ -1,0 +1,424 @@
+// Copyright (c) 2013 The claire-protorpc Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file. See the AUTHORS file for names of contributors.
+
+#include <claire/protorpc/RpcChannel.h>
+
+#include <string>
+#include <unordered_map>
+
+#include <boost/bind.hpp>
+#include <boost/atomic.hpp>
+#include <boost/weak_ptr.hpp>
+#include <boost/enable_shared_from_this.hpp>
+#include <boost/ptr_container/ptr_vector.hpp>
+
+#include <claire/common/threading/Mutex.h>
+#include <claire/common/events/EventLoop.h>
+#include <claire/common/logging/Logging.h>
+#include <claire/common/metrics/Counter.h>
+
+#include <claire/netty/Buffer.h>
+#include <claire/netty/InetAddress.h>
+#include <claire/netty/http/HttpClient.h>
+#include <claire/netty/http/HttpRequest.h>
+#include <claire/netty/http/HttpResponse.h>
+#include <claire/netty/http/HttpConnection.h>
+
+#include <claire/netty/resolver/Resolver.h>
+#include <claire/netty/resolver/ResolverFactory.h>
+#include <claire/netty/loadbalancer/LoadBalancer.h>
+#include <claire/netty/loadbalancer/LoadBalancerFactory.h>
+
+#include <claire/protorpc/RpcUtil.h>
+#include <claire/protorpc/RpcCodec.h>
+#include <claire/protorpc/RpcController.h>
+#include <claire/protorpc/rpcmessage.pb.h> // protoc-rpc-gen
+#include <claire/protorpc/builtin_service.pb.h>
+
+namespace claire {
+
+namespace {
+
+int64_t GetRequestTimeout(const ::google::protobuf::MethodDescriptor* method)
+{
+   if (method->options().HasExtension(method_timeout))
+   {
+        return method->options().GetExtension(method_timeout); 
+   }
+   return method->service()->options().GetExtension(service_timeout);
+}
+
+} // namespace 
+
+class RpcChannel::Impl : public boost::enable_shared_from_this<RpcChannel::Impl>
+{
+public:
+    Impl(EventLoop* loop, const RpcChannel::Options& options)
+        : loop_(loop),
+          next_id_(1),
+          resolver_(ResolverFactory::instance()->Create(options.resolver_name)),
+          loadbalancer_(LoadBalancerFactory::instance()->Create(options.loadbalancer_name)),
+          total_request_("protoc.RpcChannel.total_request"),
+          timeout_request_("protorpc.RpcChannel.timeout_request"),
+          total_response_("protorpc.RpcChannel.total_response"),
+          failed_response_("protorpc.RpcChannel.failed_response")
+    {
+        DCHECK(!!resolver_);
+        DCHECK(!!loadbalancer_);
+
+        codec_.SetMessageCallback(
+            boost::bind(&Impl::OnResponse, this, _1, _2));
+    }
+
+    void Connect(const std::string& server_address)
+    {
+        resolver_->Resolve(server_address,
+                           boost::bind(&Impl::OnResolveResult, this, _1));
+    }
+
+    void Connect(const InetAddress& server_address)
+    {
+        loop_->dispatch(
+                boost::bind(&Impl::MakeConnection, this, server_address));
+    }
+
+    void Shutdown()
+    {
+        for (auto it = clients_.begin(); it != clients_.end(); ++it)
+        {
+            (*it).Shutdown();
+        }
+    }
+
+    void CallMethod(const ::google::protobuf::MethodDescriptor* method,
+                    RpcControllerPtr& controller,
+                    const ::google::protobuf::Message& request,
+                    const ::google::protobuf::Message* response_prototype,
+                    const RpcChannel::Callback& done)
+    {
+        RpcMessage message;
+        MakeRequest(method, request, &message);
+
+        if (message.request().empty())
+        {
+            controller->SetFailed(RPC_ERROR_INVALID_REQUEST);
+            return ;
+        }
+        RegisterRequest(method, controller, response_prototype, done, message.id());
+
+        if (loop_->IsInLoopThread())
+        {
+            SendInLoop(message);
+        }
+        else
+        {
+            loop_->post(boost::bind(&Impl::SendInLoop, shared_from_this(), message));
+        }
+    }
+
+private:
+    void MakeRequest(const ::google::protobuf::MethodDescriptor* method,
+                     const ::google::protobuf::Message& request,                     
+                     RpcMessage* message)
+    {
+        message->set_type(REQUEST);
+        message->set_id(next_id_++);
+        message->set_service(method->service()->full_name());
+        message->set_method(method->name());
+        message->set_request(request.SerializeAsString());
+    }
+
+    void RegisterRequest(const ::google::protobuf::MethodDescriptor* method,
+                         RpcControllerPtr& controller,
+                         const ::google::protobuf::Message* response_prototype,
+                         const RpcChannel::Callback& done,
+                         int64_t id)
+    {
+        auto timeout(boost::chrono::milliseconds(GetRequestTimeout(method)));
+        DCHECK(timeout.count() > 0);
+
+        auto timeout_timer = loop_->RunAfter(timeout, 
+                                             boost::bind(&Impl::OnTimeout, this, id));
+        {
+            MutexLock lock(mutex_);
+            outstandings_[id] = {response_prototype, done, controller, timeout_timer};
+        }
+        total_request_.Increment();
+    }
+
+    void SendInLoop(RpcMessage& message)
+    {
+        auto server_address = loadbalancer_->NextBackend();
+        DCHECK(connections_.find(server_address) != connections_.end());
+        auto& connection = connections_[server_address];
+
+        Buffer buffer;
+        codec_.SerializeToBuffer(message, &buffer);
+        connection->Send(&buffer);
+    }
+
+    void OnResolveResult(const std::vector<InetAddress>& server_addresses)
+    {
+        for (auto it = server_addresses.cbegin(); it != server_addresses.cend(); ++it)
+        {
+            MakeConnection(*it);
+        }
+    }
+
+    void MakeConnection(const InetAddress& server_address)
+    {
+        HttpClient* client = new HttpClient(loop_, "RpcChannel");
+        clients_.push_back(client);
+        client->SetConnectionCallback(
+                boost::bind(&Impl::OnConnection, this, _1));
+        client->Connect(server_address);
+    }
+
+    void OnConnection(const HttpConnectionPtr& connection)
+    {
+        if (connection->connected())
+        {
+            Buffer buffer;
+            buffer.Append("POST /__protorpc__ HTTP/1.1\r\nConnection: Keep-Alive\r\n\r\n");
+
+            connection->Send(&buffer);
+            connection->SetHttpHeadersCallback(
+                    boost::bind(&Impl::OnHeaders, this, _1));
+        }
+        else
+        {
+            loadbalancer_->ReleaseBackend(connection->remote_address());
+        }
+    }
+
+    void OnHeaders(const HttpConnectionPtr& connection)
+    {
+        if (connection->mutable_response()->status() != HttpResponse::k200OK)
+        {
+            LOG(ERROR) << "connection to " << connection->remote_address().ToString() << " failed, "
+                       << connection->mutable_response()->StatusCodeReasonPhrase();
+            connection->Shutdown();                       
+            return ;
+        }
+
+        connections_.insert(std::make_pair(connection->remote_address(), connection));
+        loadbalancer_->AddBackend(connection->remote_address(), 1); //FIXME
+
+        connection->SetHttpBodyCallback(
+            boost::bind(&Impl::OnMessage, this, _1));
+    }
+
+    void OnMessage(const HttpConnectionPtr& connection)
+    {
+        codec_.ParseFromBuffer(connection, connection->buffer());
+    }
+
+    void OnResponse(const HttpConnectionPtr& connection, const RpcMessage& message)
+    {
+        if (message.type() != RESPONSE)
+        {
+            LOG(ERROR) << "Invalid message, not request type";
+            connection->Shutdown();
+            return ;
+        }
+
+        if (!message.has_response())
+        {
+            LOG(ERROR) << "Invalid message, without response field";
+            connection->Shutdown();
+            return ;
+        }
+
+        OutstandingCall out;
+        {
+            MutexLock lock(mutex_);
+            auto it = outstandings_.find(message.id());
+            if (it != outstandings_.end())
+            {
+                out.swap(it->second);
+                outstandings_.erase(it);
+            }
+        }
+        loop_->Cancel(out.timer);
+
+        total_response_.Increment();
+        if (message.has_error() && message.error() != RPC_SUCCESS)
+        {
+            if (message.has_reason())
+            {
+                out.controller->SetFailed(message.error(), message.reason());
+            }
+            else
+            {
+                out.controller->SetFailed(message.error());
+            }
+        }
+
+        if (out.response_prototype)
+        {
+            boost::shared_ptr< ::google::protobuf::Message> response(out.response_prototype->New());
+            if (!response->ParseFromString(message.response()))
+            {
+                out.controller->SetFailed(RPC_ERROR_PARSE_FAIL);
+            }
+
+            if (out.controller->Failed())
+            {
+                failed_response_.Increment();
+            }
+            out.callback(out.controller, response);
+
+            loadbalancer_->AddRequestResult(connection->remote_address(), 
+                                            out.controller->Failed() ? RequestResult::kFailed : RequestResult::kSuccess, 
+                                            0);
+        }
+        else
+        {
+            LOG(ERROR) << "No Response prototype, id " << message.id();
+            connection->Shutdown();
+        }
+    }
+
+    void OnTimeout(int64_t id)
+    {
+        timeout_request_.Increment();
+
+        OutstandingCall out;
+        {
+            MutexLock lock(mutex_);
+            auto it = outstandings_.find(id);
+            if (it != outstandings_.end())
+            {
+                out.swap(it->second);
+                outstandings_.erase(it);
+            }
+        }
+
+        out.controller->SetFailed(RPC_ERROR_REQUEST_TIMEOUT);
+
+        ::google::protobuf::MessagePtr response(NULL); //FIXME
+        out.callback(out.controller, response);
+    }
+
+    void SendHeartBeat()
+    {
+        auto method = BuiltinService::descriptor()->FindMethodByName("HeartBeat");
+        HeartBeatRequest request;
+
+        for (auto it = clients_.begin(); it != clients_.end(); ++it)
+        {
+            if ((*it).connected())
+            {
+                RpcMessage message;
+                MakeRequest(method, request, &message);
+
+                RpcControllerPtr controller(new RpcController());
+                controller->set_context((*it).remote_address());
+                RegisterRequest(method,
+                                controller,
+                                &(HeartBeatResponse::default_instance()),
+                                boost::bind(&Impl::OnHeartBeatResponse, this, _1, _2),
+                                message.id());
+
+                Buffer buffer;
+                codec_.SerializeToBuffer(message, &buffer);                
+                (*it).Send(&buffer);
+            }
+        }
+    }
+
+    void OnHeartBeatResponse(RpcControllerPtr& controller, const ::google::protobuf::MessagePtr& message)
+    {
+        auto server_address = boost::any_cast<InetAddress>(controller->context());
+        auto response = ::google::protobuf::down_pointer_cast<HeartBeatResponse>(message);
+        if (controller->Failed() || response->status() != "Ok")
+        {
+            loadbalancer_->ReleaseBackend(server_address);
+        }
+    }
+
+    struct OutstandingCall
+    {
+        OutstandingCall()
+            : response_prototype(NULL)
+        {}
+
+        OutstandingCall(const ::google::protobuf::Message* response_prototype__,
+                        const RpcChannel::Callback& callback__,
+                        RpcControllerPtr& controller__,
+                        TimerId timer__)
+            : response_prototype(response_prototype__),
+              callback(callback__),
+              controller(controller__),
+              timer(timer__)
+        {}
+
+        void swap(OutstandingCall& other)
+        {
+            std::swap(response_prototype, other.response_prototype);
+            std::swap(callback, other.callback);
+            std::swap(controller, other.controller);
+            std::swap(timer, other.timer);
+        }
+
+        const ::google::protobuf::Message* response_prototype;
+        RpcChannel::Callback callback;
+        RpcControllerPtr controller;
+        TimerId timer;
+    };
+
+    EventLoop* loop_;
+    boost::atomic<int64_t> next_id_;
+    RpcCodec codec_;
+
+    boost::scoped_ptr<Resolver> resolver_;
+    boost::scoped_ptr<LoadBalancer> loadbalancer_;
+
+    boost::ptr_vector<HttpClient> clients_;
+    std::map<InetAddress, HttpConnectionPtr> connections_;
+
+    Mutex mutex_;
+    std::unordered_map<int64_t, OutstandingCall> outstandings_;
+
+    Counter total_request_;
+    Counter timeout_request_;
+    Counter total_response_;
+    Counter failed_response_;
+};
+
+RpcChannel::RpcChannel(EventLoop* loop)
+    : impl_(new Impl(loop, Options())) {}
+
+RpcChannel::RpcChannel(EventLoop* loop, const Options& options)
+    : impl_(new Impl(loop, options)) {}
+
+void RpcChannel::CallMethod(const ::google::protobuf::MethodDescriptor* method,
+                            RpcControllerPtr& controller,
+                            const ::google::protobuf::Message& request,
+                            const ::google::protobuf::Message* response_prototype,
+                            const Callback& done)
+{
+    impl_->CallMethod(method,
+                      controller,
+                      request,
+                      response_prototype,
+                      done);
+}
+
+void RpcChannel::Connect(const std::string& server_address)
+{
+    impl_->Connect(server_address);
+}
+
+void RpcChannel::Connect(const InetAddress& server_address)
+{
+    impl_->Connect(server_address);
+}
+
+void RpcChannel::Shutdown()
+{
+    impl_->Shutdown();
+}
+
+} // namespace claire
