@@ -16,8 +16,6 @@ claire-protorpc generate protobuf .proto code use self-implemented plugin protoc
 ## Server Features ##
 
  - Service Reigstration: Servide support any service genrated by claire-protorpc defined protoc plugin protoc-rpc-gen.
-
- - /__protorpc__: Servide transport use Http, request should post to /__protorpc__ in protobuf format
  - /protorpc: User can send json message to /json path, and server can convert it to protobuf message automatically
  - /form: Server support export service method and method request/response definition to use in form, easy to debug RPC service. 
  - /flags: Server support export internal gflags item to used through /flags path. And user can change the flags value through /flags path use Post method.
