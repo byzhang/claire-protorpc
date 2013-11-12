@@ -22,7 +22,7 @@ claire-protorpc generate protobuf .proto code use self-implemented plugin protoc
  - /status: Server support export internal status, like Startime, Running Thread, etc.
  - /pprof: Server support online CPU/Memory profilling throw /pprof/profile and /pprof/heap, more info can find [here][1]
 
-## Client Features ## 
+## Client Features ##
 
  - Load Balancing: currently support random and rr policy
  - Address Resolver: currently support static address and dns.
