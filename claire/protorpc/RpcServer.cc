@@ -25,7 +25,6 @@
 
 #include <claire/netty/inspect/FlagsInspector.h>
 #include <claire/netty/inspect/PProfInspector.h>
-#include <claire/netty/inspect/StatusInspector.h>
 #include <claire/netty/inspect/StatisticsInspector.h>
 
 #include <claire/protorpc/RpcCodec.h>
@@ -45,7 +44,6 @@ public:
           server_(loop, listen_address, "RpcServer"),
           flags_(&server_),
           pprof_(&server_),
-          status_(&server_),
           statistics_(&server_),
           total_request_("protorpc.RpcServer.total_request"),
           failed_request_("protorpc.RpcServer.failed_request")
@@ -368,7 +366,6 @@ public:
 
     FlagsInspector flags_;
     PProfInspector pprof_;
-    StatusInspector status_;
     StatisticsInspector statistics_;
 
     Counter total_request_;
