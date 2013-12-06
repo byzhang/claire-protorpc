@@ -18,6 +18,7 @@ class RpcServer : boost::noncopyable
 {
 public:
     RpcServer(EventLoop* loop, const InetAddress& listen_address);
+    ~RpcServer();
 
     void Start();
     void set_num_threads(int num_threads);

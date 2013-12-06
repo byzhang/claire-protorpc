@@ -393,6 +393,8 @@ RpcChannel::RpcChannel(EventLoop* loop)
 RpcChannel::RpcChannel(EventLoop* loop, const Options& options)
     : impl_(new Impl(loop, options)) {}
 
+RpcChannel::~RpcChannel() {}
+
 void RpcChannel::CallMethod(const ::google::protobuf::MethodDescriptor* method,
                             RpcControllerPtr& controller,
                             const ::google::protobuf::Message& request,

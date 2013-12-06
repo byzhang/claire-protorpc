@@ -375,6 +375,8 @@ public:
 RpcServer::RpcServer(EventLoop* loop, const InetAddress& listen_address)
     : impl_(new Impl(loop, listen_address)) {}
 
+RpcServer::~RpcServer() {}
+
 void RpcServer::Start()
 {
     impl_->Start();

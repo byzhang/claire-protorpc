@@ -135,6 +135,7 @@ public:
 
     RpcChannel(EventLoop* loop);
     RpcChannel(EventLoop* loop, const Options& options);
+    ~RpcChannel();
 
     void Connect(const std::string& server_address);
     void Connect(const InetAddress& server_address);
