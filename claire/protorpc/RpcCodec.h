@@ -20,20 +20,20 @@ class RpcCodec : boost::noncopyable
 {
 public:
     typedef boost::function<void(const HttpConnectionPtr&,
-                                 const RpcMessage&) > Callback;
+                                 const RpcMessage&) > MessageCallback;
 
     RpcCodec();
 
-    void SetMessageCallback(const Callback& callback)
+    void set_message_callback(const MessageCallback& callback)
     {
-        callback_ = callback;
+        message_callback_ = callback;
     }
 
     void ParseFromBuffer(const HttpConnectionPtr& connection, Buffer* buffer) const;
     void SerializeToBuffer(RpcMessage& message, Buffer* buffer) const;
 
 private:
-    Callback callback_;
+    MessageCallback message_callback_;
 };
 
 } // namespace claire

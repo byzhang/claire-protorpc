@@ -140,7 +140,7 @@ ErrorCode Parse(Buffer* buffer, RpcMessage* message)
         {
             case Compress_Snappy:
             {
-                auto compressed_message 
+                auto compressed_message
                     = message->has_request() ? message->mutable_request() : message->mutable_response();
                 std::string uncompressed_message;
                 if (snappy::Uncompress(compressed_message->data(),
@@ -183,14 +183,14 @@ void RpcCodec::ParseFromBuffer(const HttpConnectionPtr& connection, Buffer* buff
             RpcMessage message;
             auto error = Parse(buffer, &message);
             if (error != RPC_SUCCESS)
-            {                
+            {
                 connection->OnError(HttpResponse::k400BadRequest,
                                     ErrorCodeToString(error));
                 break;
             }
             else
             {
-                callback_(connection, message);
+                message_callback_(connection, message);
             }
         }
         else
@@ -211,7 +211,7 @@ void RpcCodec::SerializeToBuffer(RpcMessage& message, Buffer* buffer) const
         {
             case Compress_Snappy:
             {
-                auto uncompressed_message = 
+                auto uncompressed_message =
                     message.has_request() ? message.mutable_request() : message.mutable_response();
                 std::string compressed_message;
                 if (snappy::Compress(uncompressed_message->data(),

@@ -20,7 +20,7 @@ public:
     RpcServer(EventLoop* loop, const InetAddress& listen_address);
 
     void Start();
-    void SetThreadNumber(int n);
+    void set_num_threads(int num_threads);
     void RegisterService(Service* service);
 
 private:

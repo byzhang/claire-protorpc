@@ -3,7 +3,7 @@
 #include <boost/bind.hpp>
 
 #include <claire/protorpc/RpcServer.h>
-#include <claire/common/eventloop/EventLoop.h>
+#include <claire/common/events/EventLoop.h>
 #include <claire/common/logging/Logging.h>
 #include <claire/netty/InetAddress.h>
 
@@ -39,7 +39,7 @@ int main(int argc, char* argv[])
     InetAddress listenAddr(8080);
     echo::EchoServiceImpl impl;
     RpcServer server(&loop, listenAddr);
-    server.SetThreadNumber(FLAGS_num_threads);
+    server.set_num_threads(FLAGS_num_threads);
     server.RegisterService(&impl);
     server.Start();
     loop.loop();

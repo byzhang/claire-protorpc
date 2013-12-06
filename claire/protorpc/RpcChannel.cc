@@ -44,12 +44,12 @@ int64_t GetRequestTimeout(const ::google::protobuf::MethodDescriptor* method)
 {
    if (method->options().HasExtension(method_timeout))
    {
-        return method->options().GetExtension(method_timeout); 
+        return method->options().GetExtension(method_timeout);
    }
    return method->service()->options().GetExtension(service_timeout);
 }
 
-} // namespace 
+} // namespace
 
 class RpcChannel::Impl : public boost::enable_shared_from_this<RpcChannel::Impl>
 {
@@ -67,7 +67,7 @@ public:
         DCHECK(!!resolver_);
         DCHECK(!!loadbalancer_);
 
-        codec_.SetMessageCallback(
+        codec_.set_message_callback(
             boost::bind(&Impl::OnResponse, this, _1, _2));
     }
 
@@ -79,7 +79,7 @@ public:
 
     void Connect(const InetAddress& server_address)
     {
-        loop_->dispatch(
+        loop_->Run(
                 boost::bind(&Impl::MakeConnection, this, server_address));
     }
 
@@ -113,13 +113,13 @@ public:
         }
         else
         {
-            loop_->post(boost::bind(&Impl::SendInLoop, shared_from_this(), message));
+            loop_->Post(boost::bind(&Impl::SendInLoop, shared_from_this(), message));
         }
     }
 
 private:
     void MakeRequest(const ::google::protobuf::MethodDescriptor* method,
-                     const ::google::protobuf::Message& request,                     
+                     const ::google::protobuf::Message& request,
                      RpcMessage* message)
     {
         message->set_type(REQUEST);
@@ -135,10 +135,10 @@ private:
                          const RpcChannel::Callback& done,
                          int64_t id)
     {
-        auto timeout(boost::chrono::milliseconds(GetRequestTimeout(method)));
-        DCHECK(timeout.count() > 0);
+        auto timeout = static_cast<int>(GetRequestTimeout(method));
+        DCHECK(timeout > 0);
 
-        auto timeout_timer = loop_->RunAfter(timeout, 
+        auto timeout_timer = loop_->RunAfter(timeout,
                                              boost::bind(&Impl::OnTimeout, this, id));
         {
             MutexLock lock(mutex_);
@@ -170,7 +170,7 @@ private:
     {
         HttpClient* client = new HttpClient(loop_, "RpcChannel");
         clients_.push_back(client);
-        client->SetConnectionCallback(
+        client->set_connection_callback(
                 boost::bind(&Impl::OnConnection, this, _1));
         client->Connect(server_address);
     }
@@ -183,12 +183,12 @@ private:
             buffer.Append("POST /__protorpc__ HTTP/1.1\r\nConnection: Keep-Alive\r\n\r\n");
 
             connection->Send(&buffer);
-            connection->SetHttpHeadersCallback(
+            connection->set_headers_callback(
                     boost::bind(&Impl::OnHeaders, this, _1));
         }
         else
         {
-            loadbalancer_->ReleaseBackend(connection->remote_address());
+            loadbalancer_->ReleaseBackend(connection->peer_address());
         }
     }
 
@@ -196,22 +196,22 @@ private:
     {
         if (connection->mutable_response()->status() != HttpResponse::k200OK)
         {
-            LOG(ERROR) << "connection to " << connection->remote_address().ToString() << " failed, "
+            LOG(ERROR) << "connection to " << connection->peer_address().ToString() << " failed, "
                        << connection->mutable_response()->StatusCodeReasonPhrase();
-            connection->Shutdown();                       
+            connection->Shutdown();
             return ;
         }
 
-        connections_.insert(std::make_pair(connection->remote_address(), connection));
-        loadbalancer_->AddBackend(connection->remote_address(), 1); //FIXME
+        connections_.insert(std::make_pair(connection->peer_address(), connection));
+        loadbalancer_->AddBackend(connection->peer_address(), 1); //FIXME
 
-        connection->SetHttpBodyCallback(
-            boost::bind(&Impl::OnMessage, this, _1));
+        connection->set_body_callback(
+            boost::bind(&Impl::OnMessage, this, _1, _2));
     }
 
-    void OnMessage(const HttpConnectionPtr& connection)
+    void OnMessage(const HttpConnectionPtr& connection, Buffer* buffer)
     {
-        codec_.ParseFromBuffer(connection, connection->buffer());
+        codec_.ParseFromBuffer(connection, buffer);
     }
 
     void OnResponse(const HttpConnectionPtr& connection, const RpcMessage& message)
@@ -269,8 +269,8 @@ private:
             }
             out.callback(out.controller, response);
 
-            loadbalancer_->AddRequestResult(connection->remote_address(), 
-                                            out.controller->Failed() ? RequestResult::kFailed : RequestResult::kSuccess, 
+            loadbalancer_->AddRequestResult(connection->peer_address(),
+                                            out.controller->Failed() ? RequestResult::kFailed : RequestResult::kSuccess,
                                             0);
         }
         else
@@ -297,7 +297,7 @@ private:
 
         out.controller->SetFailed(RPC_ERROR_REQUEST_TIMEOUT);
 
-        ::google::protobuf::MessagePtr response(NULL); //FIXME
+        ::google::protobuf::MessagePtr response; //FIXME
         out.callback(out.controller, response);
     }
 
@@ -314,7 +314,7 @@ private:
                 MakeRequest(method, request, &message);
 
                 RpcControllerPtr controller(new RpcController());
-                controller->set_context((*it).remote_address());
+                controller->set_context((*it).peer_address());
                 RegisterRequest(method,
                                 controller,
                                 &(HeartBeatResponse::default_instance()),
@@ -322,7 +322,7 @@ private:
                                 message.id());
 
                 Buffer buffer;
-                codec_.SerializeToBuffer(message, &buffer);                
+                codec_.SerializeToBuffer(message, &buffer);
                 (*it).Send(&buffer);
             }
         }

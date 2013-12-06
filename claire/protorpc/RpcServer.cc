@@ -48,10 +48,10 @@ public:
           total_request_("protorpc.RpcServer.total_request"),
           failed_request_("protorpc.RpcServer.failed_request")
     {
-        codec_.SetMessageCallback(
+        codec_.set_message_callback(
             boost::bind(&Impl::OnRequest, this, _1, _2));
 
-        server_.SetHttpHeadersCallback(
+        server_.set_headers_callback(
             boost::bind(&Impl::OnHeaders, this, _1));
 
         server_.Register("/form",
@@ -80,9 +80,9 @@ public:
         server_.Start();
     }
 
-    void SetThreadNumber(int number)
+    void set_num_threads(int num_threads)
     {
-        server_.SetThreadNumber(number);
+        server_.set_num_threads(num_threads);
     }
 
     void RegisterService(Service* service)
@@ -98,18 +98,18 @@ public:
         if (request->method() == HttpRequest::kPost &&
             request->uri().path() == kRpcServicePath)
         {
-            connection->SetHttpBodyCallback(
-                boost::bind(&Impl::OnMessage, this, _1));
-            
+            connection->set_body_callback(
+                boost::bind(&Impl::OnMessage, this, _1, _2));
+
             Buffer buffer;
             buffer.Append("HTTP/1.1 200 OK\r\nConnection: Keep-Alive\r\n\r\n");
             connection->Send(&buffer);
         }
     }
 
-    void OnMessage(const HttpConnectionPtr& connection)
+    void OnMessage(const HttpConnectionPtr& connection, Buffer* buffer)
     {
-        codec_.ParseFromBuffer(connection, connection->buffer());
+        codec_.ParseFromBuffer(connection, buffer);
     }
 
     void OnRequest(const HttpConnectionPtr& connection, const RpcMessage& message)
@@ -329,7 +329,7 @@ public:
         }
     }
 
-    void FillContext(RpcControllerPtr& controller, 
+    void FillContext(RpcControllerPtr& controller,
                      const RpcMessage& message,
                      const HttpConnectionPtr& connection)
     {
@@ -380,9 +380,9 @@ void RpcServer::Start()
     impl_->Start();
 }
 
-void RpcServer::SetThreadNumber(int number)
+void RpcServer::set_num_threads(int num_threads)
 {
-    impl_->SetThreadNumber(number);
+    impl_->set_num_threads(num_threads);
 }
 
 void RpcServer::RegisterService(Service* service)
