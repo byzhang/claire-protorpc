@@ -107,6 +107,12 @@ public:
         }
         RegisterRequest(method, controller, response_prototype, done, message.id());
 
+        if (!connected())
+        {
+            AddPendingRequest(message);
+            return ;
+        }
+
         if (loop_->IsInLoopThread())
         {
             SendInLoop(message);
@@ -118,6 +124,12 @@ public:
     }
 
 private:
+    bool connected() const
+    {
+        loop_->AssertInLoopThread();
+        return !connections_.empty();
+    }
+
     void MakeRequest(const ::google::protobuf::MethodDescriptor* method,
                      const ::google::protobuf::Message& request,
                      RpcMessage* message)
@@ -145,6 +157,32 @@ private:
             outstandings_[id] = {response_prototype, done, controller, timeout_timer};
         }
         total_request_.Increment();
+    }
+
+    bool HasPendingRequest() const
+    {
+        MutexLock lock(mutex_);
+        return !pending_requests_.empty();
+    }
+
+    void AddPendingRequest(RpcMessage& message)
+    {
+        MutexLock lock(mutex_);
+        pending_requests_.insert({message.id(), std::move(message)});
+    }
+
+    void DispatchPendingRequest()
+    {
+        std::unordered_map<int64_t, RpcMessage> requests;
+        {
+            MutexLock lock(mutex_);
+            requests.swap(pending_requests_);
+        }
+
+        for (auto it = requests.begin(); it != requests.end(); ++it)
+        {
+            SendInLoop(it->second); // FIXME
+        }
     }
 
     void SendInLoop(RpcMessage& message)
@@ -185,6 +223,11 @@ private:
             connection->Send(&buffer);
             connection->set_headers_callback(
                     boost::bind(&Impl::OnHeaders, this, _1));
+
+            if (HasPendingRequest())
+            {
+                DispatchPendingRequest();
+            }
         }
         else
         {
@@ -292,6 +335,13 @@ private:
             {
                 out.swap(it->second);
                 outstandings_.erase(it);
+
+                pending_requests_.erase(id);
+            }
+            else
+            {
+                NOTREACHED();
+                return ;
             }
         }
 
@@ -378,8 +428,9 @@ private:
     boost::ptr_vector<HttpClient> clients_;
     std::map<InetAddress, HttpConnectionPtr> connections_;
 
-    Mutex mutex_;
+    mutable Mutex mutex_;
     std::unordered_map<int64_t, OutstandingCall> outstandings_;
+    std::unordered_map<int64_t, RpcMessage> pending_requests_;
 
     Counter total_request_;
     Counter timeout_request_;
