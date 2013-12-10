@@ -64,7 +64,7 @@ public:
 
         server_.Register("/protorpc",
                          boost::bind(&Impl::OnJson, this, _1),
-                         false);
+                         true);
 
         RegisterService(&builtin_service_);
     }
