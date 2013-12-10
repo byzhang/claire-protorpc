@@ -52,8 +52,9 @@ set(PROTORPC_SRCS
     RpcAssets.cc)
 
 add_library(claire_protorpc ${PROTORPC_SRCS})
-target_link_libraries(claire_protorpc claire_inspect claire_http claire_netty claire_common
-    ${PROTOBUF_LIBRARY} pthread z profiler ctemplate tcmalloc snappy)
+target_link_libraries(claire_protorpc claire_netty claire_common
+    ${PROTOBUF_LIBRARY} snappy
+    pthread z)
 add_dependencies(claire_protorpc protoc-gen-rpc)
 
 install(TARGETS protoc-gen-rpc DESTINATION bin)

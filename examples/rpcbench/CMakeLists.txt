@@ -6,12 +6,14 @@ include_directories(${PROJECT_BINARY_DIR})
 add_library(echo_proto ${PROTO_SRCS})
 
 add_executable(protorpc_echo_client client.cc)
-target_link_libraries(protorpc_echo_client echo_proto claire_protorpc
-    claire_netty claire_common boost_system gflags boost_regex
-    cares)
+target_link_libraries(protorpc_echo_client echo_proto
+    claire_protorpc claire_netty claire_common
+    gflags tcmalloc
+    boost_regex cares)
 
 add_executable(protorpc_echo_server server.cc)
-target_link_libraries(protorpc_echo_server echo_proto claire_protorpc
-    claire_netty claire_common boost_system gflags
+target_link_libraries(protorpc_echo_server echo_proto
+    claire_protorpc claire_netty claire_common
+    gflags tcmalloc profiler ctemplate
     boost_regex cares)
 

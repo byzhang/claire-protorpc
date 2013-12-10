@@ -46,6 +46,7 @@ public:
           pprof_(&server_),
           statistics_(&server_),
           total_request_("protorpc.RpcServer.total_request"),
+          total_response_("protorpc.RpcServer.total_response"),
           failed_request_("protorpc.RpcServer.failed_request")
     {
         codec_.set_message_callback(
@@ -114,9 +115,10 @@ public:
 
     void OnRequest(const HttpConnectionPtr& connection, const RpcMessage& message)
     {
+        total_request_.Increment();
+
         RpcControllerPtr controller(new RpcController());
         FillContext(controller, message, connection);
-
         if (!message.has_request())
         {
             controller->SetFailed(RPC_ERROR_INVALID_REQUEST);
@@ -188,7 +190,7 @@ public:
         codec_.SerializeToBuffer(message, &buffer);
         server_.SendByHttpConnectionId(context.connection_id, &buffer);
 
-        total_request_.Increment();
+        total_response_.Increment();
         if (controller->Failed())
         {
             failed_request_.Increment();
@@ -369,6 +371,7 @@ public:
     StatisticsInspector statistics_;
 
     Counter total_request_;
+    Counter total_response_;
     Counter failed_request_;
 };
 

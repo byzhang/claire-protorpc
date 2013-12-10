@@ -12,6 +12,8 @@
 #include <boost/shared_ptr.hpp>
 #include <boost/noncopyable.hpp>
 
+#include <claire/protorpc/rpcmessage.pb.h>
+
 // Protocol Buffers - Google's data interchange format
 // Copyright 2008 Google Inc.  All rights reserved.
 // http://code.google.com/p/protobuf/
@@ -104,9 +106,16 @@ public:
     boost::any& context() { return context_; }
     const boost::any& context() const { return context_; }
 
+    void set_compress_type(CompressType compress_type)
+    {
+        compress_type_ = compress_type;
+    }
+    CompressType compress_type() const { return compress_type_; }
+
 private:
     int error_;
     std::string reason_;
+    CompressType compress_type_;
 
     boost::any context_;
 };

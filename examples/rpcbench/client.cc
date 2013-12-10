@@ -102,6 +102,7 @@ private:
 int main(int argc, char* argv[])
 {
     ::google::ParseCommandLineFlags(&argc, &argv, true);
+    InitClaireLogging(argv[0]);
     if (argc > 1)
     {
         int nClients = argc > 2 ? atoi(argv[2]) : 1;

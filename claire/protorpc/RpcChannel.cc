@@ -62,7 +62,8 @@ public:
           total_request_("protoc.RpcChannel.total_request"),
           timeout_request_("protorpc.RpcChannel.timeout_request"),
           total_response_("protorpc.RpcChannel.total_response"),
-          failed_response_("protorpc.RpcChannel.failed_response")
+          failed_response_("protorpc.RpcChannel.failed_response"),
+          connected_(false)
     {
         DCHECK(!!resolver_);
         DCHECK(!!loadbalancer_);
@@ -99,13 +100,19 @@ public:
     {
         RpcMessage message;
         MakeRequest(method, request, &message);
+        message.set_compress_type(controller->compress_type());
 
         if (message.request().empty())
         {
             controller->SetFailed(RPC_ERROR_INVALID_REQUEST);
             return ;
         }
-        RegisterRequest(method, controller, response_prototype, done, message.id());
+        loop_->Run(boost::bind(&Impl::RegisterRequest, this,
+                               method,
+                               controller,
+                               response_prototype,
+                               done,
+                               message.id()));
 
         if (!connected())
         {
@@ -124,11 +131,7 @@ public:
     }
 
 private:
-    bool connected() const
-    {
-        loop_->AssertInLoopThread();
-        return !connections_.empty();
-    }
+    bool connected() const { return connected_; }
 
     void MakeRequest(const ::google::protobuf::MethodDescriptor* method,
                      const ::google::protobuf::Message& request,
@@ -147,9 +150,10 @@ private:
                          const RpcChannel::Callback& done,
                          int64_t id)
     {
+        loop_->AssertInLoopThread();
+
         auto timeout = static_cast<int>(GetRequestTimeout(method));
         DCHECK(timeout > 0);
-
         auto timeout_timer = loop_->RunAfter(timeout,
                                              boost::bind(&Impl::OnTimeout, this, id));
         {
@@ -187,6 +191,7 @@ private:
 
     void SendInLoop(RpcMessage& message)
     {
+        loop_->AssertInLoopThread();
         auto server_address = loadbalancer_->NextBackend();
         DCHECK(connections_.find(server_address) != connections_.end());
         auto& connection = connections_[server_address];
@@ -217,9 +222,10 @@ private:
     {
         if (connection->connected())
         {
+            connected_ = true;
+
             Buffer buffer;
             buffer.Append("POST /__protorpc__ HTTP/1.1\r\nConnection: Keep-Alive\r\n\r\n");
-
             connection->Send(&buffer);
             connection->set_headers_callback(
                     boost::bind(&Impl::OnHeaders, this, _1));
@@ -232,6 +238,7 @@ private:
         else
         {
             loadbalancer_->ReleaseBackend(connection->peer_address());
+            connected_ = !(connections_.empty());
         }
     }
 
@@ -281,6 +288,10 @@ private:
             {
                 out.swap(it->second);
                 outstandings_.erase(it);
+            }
+            else
+            {
+                return ;
             }
         }
         loop_->Cancel(out.timer);
@@ -340,7 +351,7 @@ private:
             }
             else
             {
-                NOTREACHED();
+                //NOTREACHED();
                 return ;
             }
         }
@@ -436,6 +447,8 @@ private:
     Counter timeout_request_;
     Counter total_response_;
     Counter failed_response_;
+
+    bool connected_;
 };
 
 RpcChannel::RpcChannel(EventLoop* loop)

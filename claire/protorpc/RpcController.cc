@@ -4,12 +4,12 @@
 
 #include <claire/protorpc/RpcController.h>
 #include <claire/protorpc/RpcUtil.h>
-#include <claire/protorpc/rpcmessage.pb.h> // protoc-rpc-gen
 
 namespace claire {
 
 RpcController::RpcController()
-    : error_(RPC_SUCCESS) {}
+    : error_(RPC_SUCCESS),
+      compress_type_(Compress_None){}
 
 void RpcController::Reset()
 {
