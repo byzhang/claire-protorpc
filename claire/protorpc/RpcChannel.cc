@@ -17,6 +17,7 @@
 #include <claire/common/events/EventLoop.h>
 #include <claire/common/logging/Logging.h>
 #include <claire/common/metrics/Counter.h>
+#include <claire/common/metrics/Histogram.h>
 
 #include <claire/netty/Buffer.h>
 #include <claire/netty/InetAddress.h>
@@ -107,12 +108,11 @@ public:
             controller->SetFailed(RPC_ERROR_INVALID_REQUEST);
             return ;
         }
-        loop_->Run(boost::bind(&Impl::RegisterRequest, this,
-                               method,
-                               controller,
-                               response_prototype,
-                               done,
-                               message.id()));
+        RegisterRequest(method,
+                        controller,
+                        response_prototype,
+                        done,
+                        message.id());
 
         if (!connected())
         {
@@ -150,8 +150,6 @@ private:
                          const RpcChannel::Callback& done,
                          int64_t id)
     {
-        loop_->AssertInLoopThread();
-
         auto timeout = static_cast<int>(GetRequestTimeout(method));
         DCHECK(timeout > 0);
         auto timeout_timer = loop_->RunAfter(timeout,
@@ -323,6 +321,11 @@ private:
             }
             out.callback(out.controller, response);
 
+            HISTOGRAM_CUSTOM_TIMES("claire.RpcChannel.request_latency",
+                                   static_cast<int>(TimeDifference(Timestamp::Now(), out.sent_time)/1000),
+                                   1,
+                                   10000,
+                                   100);
             loadbalancer_->AddRequestResult(connection->peer_address(),
                                             out.controller->Failed() ? RequestResult::kFailed : RequestResult::kSuccess,
                                             0);
@@ -351,7 +354,7 @@ private:
             }
             else
             {
-                //NOTREACHED();
+                NOTREACHED();
                 return ;
             }
         }
@@ -412,7 +415,8 @@ private:
             : response_prototype(response_prototype__),
               callback(callback__),
               controller(controller__),
-              timer(timer__)
+              timer(timer__),
+              sent_time(Timestamp::Now())
         {}
 
         void swap(OutstandingCall& other)
@@ -421,12 +425,14 @@ private:
             std::swap(callback, other.callback);
             std::swap(controller, other.controller);
             std::swap(timer, other.timer);
+            std::swap(sent_time, other.sent_time);
         }
 
         const ::google::protobuf::Message* response_prototype;
         RpcChannel::Callback callback;
         RpcControllerPtr controller;
         TimerId timer;
+        Timestamp sent_time;
     };
 
     EventLoop* loop_;

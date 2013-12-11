@@ -15,7 +15,7 @@ void RpcController::Reset()
 {
     error_ = RPC_SUCCESS;
     reason_.clear();
-
+    compress_type_ = Compress_None;
     context_ = boost::any();
 }
 

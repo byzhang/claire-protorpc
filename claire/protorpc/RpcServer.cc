@@ -180,9 +180,9 @@ public:
         else
         {
             message.set_response(response->SerializeAsString());
-            if (context.compress_type != Compress_None)
+            if (controller->compress_type() != Compress_None)
             {
-                message.set_compress_type(context.compress_type);
+                message.set_compress_type(controller->compress_type());
             }
         }
 
@@ -195,6 +195,12 @@ public:
         {
             failed_request_.Increment();
         }
+
+        HISTOGRAM_CUSTOM_TIMES("claire.RpcServer.response_latency",
+                               static_cast<int>(TimeDifference(Timestamp::Now(), context.received_time)/1000),
+                               1,
+                               10000,
+                               100);
     }
 
     void OnForm(const HttpConnectionPtr& connection)
@@ -339,7 +345,7 @@ public:
         context.id = message.id();
         if (message.has_compress_type())
         {
-            context.compress_type = message.compress_type();
+            controller->set_compress_type(message.compress_type());
         }
 
         context.connection_id = connection->id();
@@ -350,12 +356,12 @@ public:
     {
         Context()
             : id(-1),
-              compress_type(Compress_None),
+              received_time(Timestamp::Now()),
               connection_id(-1)
         {}
 
         int64_t id;
-        CompressType compress_type;
+        Timestamp received_time;
         HttpConnection::Id connection_id;
     };
 
