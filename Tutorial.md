@@ -86,10 +86,10 @@ Server-side should implement the service, and register it to RpcServer object
         InitClaireLogging(argv[0]);
     
         EventLoop loop;
-        InetAddress listenAddr(8080);
+        InetAddress listen_address(8080);
         echo::EchoServiceImpl impl;
-        RpcServer server(&loop, listenAddr);
-        server.SetThreadNumber(FLAGS_num_threads);
+        RpcServer server(&loop, listen_address);
+        server.set_num_threads(FLAGS_num_threads);
         server.RegisterService(&impl);
         server.Start();
         loop.loop();
@@ -129,7 +129,7 @@ RpcContorller allow us to control the server-side execution of a remote call. Fo
 
 In main, we create the server, and pass in the endpoint we want to the server to listen on:
 
-        RpcServer server(&loop, listenAddr);
+        RpcServer server(&loop, listen_address);
 
 We register our EchoService implementation to the server:
 
@@ -177,9 +177,9 @@ Client-side do not need user implement anything, but has more concept:
     {
         EventLoop loop;
     
-        InetAddress serverAddr(argv[1], 8080);
+        InetAddress server_address(argv[1], 8080);
         RpcChannel channel(&loop);
-        channel.Connect(serverAddr);
+        channel.Connect(server_address);
 
         echo::EchoService::Stub stub(&channel);
         RpcControllerPtr controller(new RpcController());
@@ -203,9 +203,9 @@ Then we need to include claire-protorpc headers:
 
 In main, we define a RpcChannel first,  it communicate with server-side, Connect() is non-block fuctions.
 
-        InetAddress serverAddr(argv[1], 8080);
+        InetAddress server_address(argv[1], 8080);
         RpcChannel channel(&loop);
-        channel.Connect(serverAddr);
+        channel.Connect(server_address);
 
 Protocol Buffers has generated a service stub type, which we instantiate:
 
