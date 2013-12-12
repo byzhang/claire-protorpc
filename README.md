@@ -17,7 +17,11 @@ See [Tutorial][2]
 
 See [Features][3]
 
+## Slide ## 
+
+See Intro to [claire-protorpc][4]
 
   [1]: https://github.com/robbinfan/claire-protorpc/blob/master/Installation%20Guide.md
   [2]: https://github.com/robbinfan/claire-protorpc/blob/master/Tutorial.md
   [3]: https://github.com/robbinfan/claire-protorpc/blob/master/Features.md
+  [4]: http://www.slideshare.net/fanyu83/claire-protorpc
