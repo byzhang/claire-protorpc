@@ -13,6 +13,7 @@
 #include <boost/noncopyable.hpp>
 
 #include <claire/protorpc/rpcmessage.pb.h>
+#include <claire/common/tracing/Trace.h>
 
 // Protocol Buffers - Google's data interchange format
 // Copyright 2008 Google Inc.  All rights reserved.
@@ -112,11 +113,17 @@ public:
     }
     CompressType compress_type() const { return compress_type_; }
 
+    Trace* parent_trace() const { return parent_trace_; }
+    void set_parent_trace(Trace* trace)
+    {
+        parent_trace_ = trace;
+    }
+
 private:
     int error_;
     std::string reason_;
     CompressType compress_type_;
-
+    Trace* parent_trace_;
     boost::any context_;
 };
 

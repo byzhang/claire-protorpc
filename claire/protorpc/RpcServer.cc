@@ -16,6 +16,7 @@
 #include <claire/common/metrics/Histogram.h>
 #include <claire/common/events/EventLoop.h>
 #include <claire/common/protobuf/ProtobufIO.h>
+#include <claire/common/tracing/Tracing.h>
 
 #include <claire/netty/InetAddress.h>
 #include <claire/netty/http/HttpServer.h>
@@ -119,6 +120,14 @@ public:
 
         RpcControllerPtr controller(new RpcController());
         FillContext(controller, message, connection);
+
+        // build trace context
+        boost::scoped_ptr<TraceContextGuard> trace_guard;
+        if (message.has_trace_id())
+        {
+            trace_guard.reset(new TraceContextGuard(message.trace_id().trace_id(), message.trace_id().span_id()));
+        }
+
         if (!message.has_request())
         {
             controller->SetFailed(RPC_ERROR_INVALID_REQUEST);
@@ -186,9 +195,16 @@ public:
             }
         }
 
+        if (context.trace)
+        {
+            message.mutable_trace_id()->set_trace_id(context.trace->trace_id());
+            message.mutable_trace_id()->set_span_id(context.trace->span_id());
+        }
+
         Buffer buffer;
         codec_.SerializeToBuffer(message, &buffer);
         server_.SendByHttpConnectionId(context.connection_id, &buffer);
+        TRACE_ANNOTATION(Annotation::server_send());
 
         total_response_.Increment();
         if (controller->Failed())
@@ -196,11 +212,12 @@ public:
             failed_request_.Increment();
         }
 
-        HISTOGRAM_CUSTOM_TIMES("claire.RpcServer.response_latency",
+        HISTOGRAM_CUSTOM_TIMES("claire.RpcServer.response_duration",
                                static_cast<int>(TimeDifference(Timestamp::Now(), context.received_time)/1000),
                                1,
                                10000,
                                100);
+        ERASE_TRACE();
     }
 
     void OnForm(const HttpConnectionPtr& connection)
@@ -350,6 +367,24 @@ public:
 
         context.connection_id = connection->id();
         controller->set_context(context);
+
+        if (message.has_trace_id())
+        {
+            auto trace = Trace::FactoryGet(message.method(),
+                                           message.trace_id().trace_id(),
+                                           message.trace_id().span_id(),
+                                           message.trace_id().has_parent_span_id() ? message.trace_id().parent_span_id() : 0);
+            if (trace)
+            {
+                Endpoint host;
+                host.ipv4 = static_cast<int>(connection->local_address().sockaddr().sin_addr.s_addr);
+                host.port = connection->local_address().port();
+                host.service_name = message.service();
+                trace->set_host(host);
+                trace->Record(Annotation::server_recv());
+            }
+            context.trace = trace;
+        }
     }
 
     struct Context
@@ -357,12 +392,14 @@ public:
         Context()
             : id(-1),
               received_time(Timestamp::Now()),
-              connection_id(-1)
+              connection_id(-1),
+              trace(NULL)
         {}
 
         int64_t id;
         Timestamp received_time;
         HttpConnection::Id connection_id;
+        Trace* trace;
     };
 
     EventLoop* loop_;

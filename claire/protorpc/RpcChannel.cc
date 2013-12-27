@@ -4,6 +4,8 @@
 
 #include <claire/protorpc/RpcChannel.h>
 
+#include <gflags/gflags.h>
+
 #include <string>
 #include <unordered_map>
 
@@ -18,6 +20,7 @@
 #include <claire/common/logging/Logging.h>
 #include <claire/common/metrics/Counter.h>
 #include <claire/common/metrics/Histogram.h>
+#include <claire/common/tracing/Tracing.h>
 
 #include <claire/netty/Buffer.h>
 #include <claire/netty/InetAddress.h>
@@ -36,6 +39,8 @@
 #include <claire/protorpc/RpcController.h>
 #include <claire/protorpc/rpcmessage.pb.h> // protoc-rpc-gen
 #include <claire/protorpc/builtin_service.pb.h>
+
+DEFINE_int32(claire_RpcChannel_trace_rate, 1000, "RpcChannel trace per trace_rate");
 
 namespace claire {
 
@@ -114,6 +119,28 @@ public:
                         done,
                         message.id());
 
+        if (controller->parent_trace() || message.id() % FLAGS_claire_RpcChannel_trace_rate == 0)
+        {
+            Trace* trace;
+            if (controller->parent_trace())
+            {
+                trace = controller->parent_trace()->MakeChild(method->name());
+            }
+            else
+            {
+                trace = Trace::FactoryGet(method->name());
+            }
+
+            message.mutable_trace_id()->set_trace_id(trace->trace_id());
+            message.mutable_trace_id()->set_span_id(trace->span_id());
+            if (controller->parent_trace())
+            {
+                message.mutable_trace_id()->set_parent_span_id(controller->parent_trace()->span_id());
+            }
+            ThisThread::SetTraceContext(trace->trace_id(), trace->span_id());
+        }
+
+        TraceContextGuard trace_guard;
         if (!connected())
         {
             AddPendingRequest(message);
@@ -194,9 +221,12 @@ private:
         DCHECK(connections_.find(server_address) != connections_.end());
         auto& connection = connections_[server_address];
 
+        TRACE_SET_HOST(server_address.sockaddr().sin_addr.s_addr, server_address.port(), message.service());
+        // FIXME: set endpoint
         Buffer buffer;
         codec_.SerializeToBuffer(message, &buffer);
         connection->Send(&buffer);
+        TRACE_ANNOTATION(Annotation::client_send());
     }
 
     void OnResolveResult(const std::vector<InetAddress>& server_addresses)
@@ -264,6 +294,13 @@ private:
 
     void OnResponse(const HttpConnectionPtr& connection, const RpcMessage& message)
     {
+        boost::scoped_ptr<TraceContextGuard> trace_guard;
+        if (message.has_trace_id())
+        {
+            trace_guard.reset(new TraceContextGuard(message.trace_id().trace_id(),
+                                                    message.trace_id().span_id()));
+        }
+
         if (message.type() != RESPONSE)
         {
             LOG(ERROR) << "Invalid message, not request type";
@@ -294,6 +331,7 @@ private:
         }
         loop_->Cancel(out.timer);
 
+        TRACE_ANNOTATION(Annotation::client_recv());
         total_response_.Increment();
         if (message.has_error() && message.error() != RPC_SUCCESS)
         {
@@ -321,7 +359,7 @@ private:
             }
             out.callback(out.controller, response);
 
-            HISTOGRAM_CUSTOM_TIMES("claire.RpcChannel.request_latency",
+            HISTOGRAM_CUSTOM_TIMES("claire.RpcChannel.request_duration",
                                    static_cast<int>(TimeDifference(Timestamp::Now(), out.sent_time)/1000),
                                    1,
                                    10000,
@@ -335,6 +373,8 @@ private:
             LOG(ERROR) << "No Response prototype, id " << message.id();
             connection->Shutdown();
         }
+
+        ERASE_TRACE();
     }
 
     void OnTimeout(int64_t id)

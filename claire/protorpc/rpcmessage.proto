@@ -33,6 +33,12 @@ enum ErrorCode {
   RPC_ERROR_UNKNOWN_ERROR = 13;
 }
 
+message TraceId {
+  required int64 trace_id = 1;
+  required int64 span_id = 2;
+  optional int64 parent_span_id = 3;
+}
+
 message RpcMessage {
   required MessageType type = 1;
   required fixed64 id = 2;
@@ -47,6 +53,8 @@ message RpcMessage {
   optional string reason = 8;
 
   optional CompressType compress_type = 9;
+
+  optional TraceId trace_id = 10;
 }
 
 extend google.protobuf.ServiceOptions {
