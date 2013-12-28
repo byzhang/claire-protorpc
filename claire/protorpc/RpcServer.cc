@@ -366,25 +366,23 @@ public:
         }
 
         context.connection_id = connection->id();
-        controller->set_context(context);
-
         if (message.has_trace_id())
         {
-            auto trace = Trace::FactoryGet(message.method(),
-                                           message.trace_id().trace_id(),
-                                           message.trace_id().span_id(),
-                                           message.trace_id().has_parent_span_id() ? message.trace_id().parent_span_id() : 0);
-            if (trace)
+            context.trace = Trace::FactoryGet(message.method(),
+                                              message.trace_id().trace_id(),
+                                              message.trace_id().span_id(),
+                                              message.trace_id().has_parent_span_id() ? message.trace_id().parent_span_id() : 0);
+            if (context.trace)
             {
                 Endpoint host;
-                host.ipv4 = static_cast<int>(connection->local_address().sockaddr().sin_addr.s_addr);
+                host.ipv4 = connection->local_address().IpAsInt();
                 host.port = connection->local_address().port();
                 host.service_name = message.service();
-                trace->set_host(host);
-                trace->Record(Annotation::server_recv());
+                context.trace->set_host(host);
+                context.trace->Record(Annotation::server_recv());
             }
-            context.trace = trace;
         }
+        controller->set_context(context);
     }
 
     struct Context

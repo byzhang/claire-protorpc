@@ -119,7 +119,9 @@ public:
                         done,
                         message.id());
 
-        if (controller->parent_trace() || message.id() % FLAGS_claire_RpcChannel_trace_rate == 0)
+        if (controller->parent_trace()
+            || FLAGS_claire_RpcChannel_trace_rate == 0 
+	    || (FLAGS_claire_RpcChannel_trace_rate > 0 && message.id() % FLAGS_claire_RpcChannel_trace_rate == 0))
         {
             Trace* trace;
             if (controller->parent_trace())
@@ -217,11 +219,17 @@ private:
     void SendInLoop(RpcMessage& message)
     {
         loop_->AssertInLoopThread();
+	if (!connected())
+        {
+            AddPendingRequest(message);
+            return ;
+        }
+
         auto server_address = loadbalancer_->NextBackend();
         DCHECK(connections_.find(server_address) != connections_.end());
         auto& connection = connections_[server_address];
 
-        TRACE_SET_HOST(server_address.sockaddr().sin_addr.s_addr, server_address.port(), message.service());
+        TRACE_SET_HOST(server_address.IpAsInt(), server_address.port(), message.service());
         // FIXME: set endpoint
         Buffer buffer;
         codec_.SerializeToBuffer(message, &buffer);
