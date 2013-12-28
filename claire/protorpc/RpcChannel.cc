@@ -219,12 +219,6 @@ private:
     void SendInLoop(RpcMessage& message)
     {
         loop_->AssertInLoopThread();
-	if (!connected())
-        {
-            AddPendingRequest(message);
-            return ;
-        }
-
         auto server_address = loadbalancer_->NextBackend();
         DCHECK(connections_.find(server_address) != connections_.end());
         auto& connection = connections_[server_address];
@@ -258,18 +252,11 @@ private:
     {
         if (connection->connected())
         {
-            connected_ = true;
-
             Buffer buffer;
             buffer.Append("POST /__protorpc__ HTTP/1.1\r\nConnection: Keep-Alive\r\n\r\n");
             connection->Send(&buffer);
             connection->set_headers_callback(
                     boost::bind(&Impl::OnHeaders, this, _1));
-
-            if (HasPendingRequest())
-            {
-                DispatchPendingRequest();
-            }
         }
         else
         {
@@ -293,6 +280,12 @@ private:
 
         connection->set_body_callback(
             boost::bind(&Impl::OnMessage, this, _1, _2));
+
+        connected_ = true;
+        if (HasPendingRequest())
+        {
+            DispatchPendingRequest();
+        }
     }
 
     void OnMessage(const HttpConnectionPtr& connection, Buffer* buffer)
