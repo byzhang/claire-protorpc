@@ -121,12 +121,12 @@ public:
         RpcControllerPtr controller(new RpcController());
         FillContext(controller, message, connection);
 
-        // build trace context
-        boost::scoped_ptr<TraceContextGuard> trace_guard;
+        ThisThread::ResetTraceContext();
         if (message.has_trace_id())
         {
-            trace_guard.reset(new TraceContextGuard(message.trace_id().trace_id(), message.trace_id().span_id()));
+            ThisThread::SetTraceContext(message.trace_id().trace_id(), message.trace_id().span_id());
         }
+        TraceContextGuard trace_context_guard;
 
         if (!message.has_request())
         {
@@ -194,11 +194,14 @@ public:
                 message.set_compress_type(controller->compress_type());
             }
         }
-
+        
+        ThisThread::ResetTraceContext();
         if (controller->has_trace_id())
         {
+            ThisThread::SetTraceContext(controller->trace_id().trace_id(), controller->trace_id().span_id());
             message.mutable_trace_id()->CopyFrom(controller->trace_id());
         }
+        TraceContextGuard trace_context_guard;
 
         Buffer buffer;
         codec_.SerializeToBuffer(message, &buffer);

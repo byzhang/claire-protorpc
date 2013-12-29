@@ -119,12 +119,13 @@ public:
                         done,
                         message.id());
 
+        ThisThread::ResetTraceContext();
         if ((controller->parent() && controller->parent()->has_trace_id())
             || FLAGS_claire_RpcChannel_trace_rate == 0 
 	        || (FLAGS_claire_RpcChannel_trace_rate > 0 && message.id() % FLAGS_claire_RpcChannel_trace_rate == 0))
         {
-            Trace* trace;
-            Trace* parent_trace;
+            Trace* trace = NULL;
+            Trace* parent_trace = NULL;
             if (controller->parent())
             {
                 parent_trace = GET_TRACE_BY_TRACEID(controller->parent()->trace_id().trace_id(), controller->parent()->trace_id().span_id());
@@ -144,8 +145,8 @@ public:
             }
             ThisThread::SetTraceContext(trace->trace_id(), trace->span_id());
         }
-
         TraceContextGuard trace_guard;
+
         if (!connected())
         {
             AddPendingRequest(message);
@@ -226,12 +227,16 @@ private:
         DCHECK(connections_.find(server_address) != connections_.end());
         auto& connection = connections_[server_address];
 
-        TRACE_SET_HOST(server_address.IpAsInt(), server_address.port(), message.service());
-        // FIXME: set endpoint
+        if (message.has_trace_id())
+        {
+            TraceContextGuard guard(message.trace_id().trace_id(), message.trace_id().span_id());  
+            TRACE_SET_HOST(connection->local_address().IpAsInt(), connection->local_address().port(), message.service());
+            TRACE_ANNOTATION(Annotation::client_send());
+        }
+
         Buffer buffer;
         codec_.SerializeToBuffer(message, &buffer);
         connection->Send(&buffer);
-        TRACE_ANNOTATION(Annotation::client_send());
     }
 
     void OnResolveResult(const std::vector<InetAddress>& server_addresses)
@@ -300,12 +305,12 @@ private:
 
     void OnResponse(const HttpConnectionPtr& connection, const RpcMessage& message)
     {
-        boost::scoped_ptr<TraceContextGuard> trace_guard;
+        ThisThread::ResetTraceContext();
         if (message.has_trace_id())
         {
-            trace_guard.reset(new TraceContextGuard(message.trace_id().trace_id(),
-                                                    message.trace_id().span_id()));
+            ThisThread::SetTraceContext(message.trace_id().trace_id(), message.trace_id().span_id());
         }
+        TraceContextGuard trace_context_guard;
 
         if (message.type() != RESPONSE)
         {

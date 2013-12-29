@@ -7,14 +7,12 @@
 
 using namespace claire;
 
-EventLoop* g_loop = NULL;
 void OnResult(const std::vector<int32_t>& v)
 {
     for (size_t i = 0; i < v.size(); i++)
     {
         LOG(DEBUG) << "v[" << i << "] " << v[i];
     }
-    g_loop->quit();
 }
 
 int main(int argc, char* argv[])
@@ -26,7 +24,6 @@ int main(int argc, char* argv[])
     InstallClaireTracer(&tracer);
 
     EventLoop loop;
-    g_loop = &loop;
     InetAddress server_address(argv[1], 8081);
 
     SortClient client(&loop, server_address);
