@@ -119,14 +119,17 @@ public:
                         done,
                         message.id());
 
-        if (controller->parent_trace()
+        if ((controller->parent() && controller->parent()->has_trace_id())
             || FLAGS_claire_RpcChannel_trace_rate == 0 
-	    || (FLAGS_claire_RpcChannel_trace_rate > 0 && message.id() % FLAGS_claire_RpcChannel_trace_rate == 0))
+	        || (FLAGS_claire_RpcChannel_trace_rate > 0 && message.id() % FLAGS_claire_RpcChannel_trace_rate == 0))
         {
             Trace* trace;
-            if (controller->parent_trace())
+            Trace* parent_trace;
+            if (controller->parent())
             {
-                trace = controller->parent_trace()->MakeChild(method->name());
+                parent_trace = GET_TRACE_BY_TRACEID(controller->parent()->trace_id().trace_id(), controller->parent()->trace_id().span_id());
+                DCHECK(parent_trace);
+                trace = parent_trace->MakeChild(method->name());
             }
             else
             {
@@ -135,9 +138,9 @@ public:
 
             message.mutable_trace_id()->set_trace_id(trace->trace_id());
             message.mutable_trace_id()->set_span_id(trace->span_id());
-            if (controller->parent_trace())
+            if (parent_trace)
             {
-                message.mutable_trace_id()->set_parent_span_id(controller->parent_trace()->span_id());
+                message.mutable_trace_id()->set_parent_span_id(parent_trace->span_id());
             }
             ThisThread::SetTraceContext(trace->trace_id(), trace->span_id());
         }
@@ -260,6 +263,7 @@ private:
         }
         else
         {
+            connections_.erase(connection->peer_address());
             loadbalancer_->ReleaseBackend(connection->peer_address());
             connected_ = !(connections_.empty());
         }

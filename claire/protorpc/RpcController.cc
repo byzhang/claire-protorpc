@@ -9,15 +9,15 @@ namespace claire {
 
 RpcController::RpcController()
     : error_(RPC_SUCCESS),
-      compress_type_(Compress_None),
-      parent_trace_(NULL) {}
+      compress_type_(Compress_None) {}
 
 void RpcController::Reset()
 {
     error_ = RPC_SUCCESS;
     reason_.clear();
     compress_type_ = Compress_None;
-    parent_trace_ = NULL;
+    parent_.reset();
+    trace_id_.Clear();
     context_ = boost::any();
 }
 

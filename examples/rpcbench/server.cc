@@ -19,7 +19,7 @@ class EchoServiceImpl : public EchoService
 public:
     virtual void Echo(RpcControllerPtr& controller,
                       const ::echo::EchoRequestPtr& request,
-                      const ::echo::EchoResponse* responseProtoType,
+                      const ::echo::EchoResponse* response_prototype,
                       const RpcDoneCallback& done)
     {
         EchoResponse response;
@@ -36,9 +36,9 @@ int main(int argc, char* argv[])
     InitClaireLogging(argv[0]);
 
     EventLoop loop;
-    InetAddress listenAddr(8080);
+    InetAddress listen_address(8081);
     echo::EchoServiceImpl impl;
-    RpcServer server(&loop, listenAddr);
+    RpcServer server(&loop, listen_address);
     server.set_num_threads(FLAGS_num_threads);
     server.RegisterService(&impl);
     server.Start();

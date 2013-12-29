@@ -10,10 +10,10 @@
 #include <boost/any.hpp>
 #include <boost/function.hpp>
 #include <boost/shared_ptr.hpp>
+#include <boost/weak_ptr.hpp>
 #include <boost/noncopyable.hpp>
 
 #include <claire/protorpc/rpcmessage.pb.h>
-#include <claire/common/tracing/Trace.h>
 
 // Protocol Buffers - Google's data interchange format
 // Copyright 2008 Google Inc.  All rights reserved.
@@ -46,6 +46,9 @@
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 namespace claire {
+
+class RpcController;
+typedef boost::shared_ptr<RpcController> RpcControllerPtr;
 
 // An RpcController mediates a single method call.  The primary purpose of
 // the controller is to provide a way to manipulate settings specific to the
@@ -113,21 +116,31 @@ public:
     }
     CompressType compress_type() const { return compress_type_; }
 
-    Trace* parent_trace() const { return parent_trace_; }
-    void set_parent_trace(Trace* trace)
+    RpcControllerPtr parent() { return parent_.lock(); }
+    void set_parent(RpcControllerPtr& p)
     {
-        parent_trace_ = trace;
+        parent_ = p;
     }
+
+    bool has_trace_id() const { return trace_id_.IsInitialized(); }
+    void set_trace_id(const TraceId& trace_id__)
+    {
+        if (trace_id__.IsInitialized())
+        {
+            trace_id_.CopyFrom(trace_id__);
+        }
+    }
+
+    const TraceId& trace_id() const { return trace_id_; }
 
 private:
     int error_;
     std::string reason_;
     CompressType compress_type_;
-    Trace* parent_trace_;
+    boost::weak_ptr<RpcController> parent_;
+    TraceId trace_id_;
     boost::any context_;
 };
-
-typedef boost::shared_ptr<RpcController> RpcControllerPtr;
 
 } // namespace claire
 

@@ -195,10 +195,9 @@ public:
             }
         }
 
-        if (context.trace)
+        if (controller->has_trace_id())
         {
-            message.mutable_trace_id()->set_trace_id(context.trace->trace_id());
-            message.mutable_trace_id()->set_span_id(context.trace->span_id());
+            message.mutable_trace_id()->CopyFrom(controller->trace_id());
         }
 
         Buffer buffer;
@@ -368,18 +367,19 @@ public:
         context.connection_id = connection->id();
         if (message.has_trace_id())
         {
-            context.trace = Trace::FactoryGet(message.method(),
-                                              message.trace_id().trace_id(),
-                                              message.trace_id().span_id(),
-                                              message.trace_id().has_parent_span_id() ? message.trace_id().parent_span_id() : 0);
-            if (context.trace)
+            controller->set_trace_id(message.trace_id());
+            auto trace = Trace::FactoryGet(message.method(),
+                                           message.trace_id().trace_id(),
+                                           message.trace_id().span_id(),
+                                           message.trace_id().has_parent_span_id() ? message.trace_id().parent_span_id() : 0);
+            if (trace)
             {
                 Endpoint host;
                 host.ipv4 = connection->local_address().IpAsInt();
                 host.port = connection->local_address().port();
                 host.service_name = message.service();
-                context.trace->set_host(host);
-                context.trace->Record(Annotation::server_recv());
+                trace->set_host(host);
+                trace->Record(Annotation::server_recv());
             }
         }
         controller->set_context(context);
@@ -390,14 +390,12 @@ public:
         Context()
             : id(-1),
               received_time(Timestamp::Now()),
-              connection_id(-1),
-              trace(NULL)
+              connection_id(-1)
         {}
 
         int64_t id;
         Timestamp received_time;
         HttpConnection::Id connection_id;
-        Trace* trace;
     };
 
     EventLoop* loop_;

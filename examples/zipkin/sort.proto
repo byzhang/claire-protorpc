@@ -1,0 +1,16 @@
+package sort;
+
+option cc_generic_services = true;
+
+message SortRequest {
+  repeated int32 nums = 1;
+}
+
+message SortResponse {
+  repeated int32 nums = 1;
+}
+
+service SortService {
+  rpc Sort (SortRequest) returns (SortResponse);
+}
+

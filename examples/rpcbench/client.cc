@@ -13,7 +13,6 @@
 #include <claire/common/events/EventLoopThread.h>
 #include <claire/common/events/EventLoopThreadPool.h>
 #include <claire/netty/InetAddress.h>
-#include <claire/netty/http/HttpClient.h>
 #include <claire/common/metrics/Counter.h>
 #include <claire/common/metrics/CounterProvider.h>
 
@@ -28,11 +27,11 @@ class RpcClient : boost::noncopyable
 public:
 
     RpcClient(EventLoop* loop,
-              CountDownLatch* allFinished,
+              CountDownLatch* all_finished,
               int id, int max)
       : channel_(loop),
         stub_(&channel_),
-        allFinished_(allFinished),
+        all_finished_(all_finished),
         sent_(0),
         replied_(0),
         finished_(false),
@@ -43,9 +42,9 @@ public:
     {
     }
 
-    void connect(const InetAddress& addr)
+    void connect(const InetAddress& address)
     {
-        channel_.Connect(addr);
+        channel_.Connect(address);
     }
 
     void SendRequest()
@@ -65,7 +64,7 @@ private:
         total_request_.Increment();
     }
 
-    void replied(RpcControllerPtr& controller, const boost::shared_ptr<echo::EchoResponse>& resp)
+    void replied(RpcControllerPtr& controller, const boost::shared_ptr<echo::EchoResponse>& response)
     {
         if (controller->Failed())
         {
@@ -82,14 +81,14 @@ private:
         if (!finished_ && replied_ == max_)
         {
             finished_ = true;
-            allFinished_->CountDown();
+            all_finished_->CountDown();
             LOG(INFO) << "RpcClient#" << id_ << " finished, count " << sent_;
         }
     }
 
     RpcChannel channel_;
     echo::EchoService::Stub stub_;
-    CountDownLatch* allFinished_;
+    CountDownLatch* all_finished_;
     int sent_;
     int replied_;
     bool finished_;
@@ -103,43 +102,43 @@ int main(int argc, char* argv[])
 {
     ::google::ParseCommandLineFlags(&argc, &argv, true);
     InitClaireLogging(argv[0]);
+
     if (argc > 1)
     {
-        int nClients = argc > 2 ? atoi(argv[2]) : 1;
-        int nThreads = argc > 3 ? atoi(argv[3]) : 1;
-        int nPipeLine = argc > 4 ? atoi(argv[4]) : 1;
+        int num_clients = argc > 2 ? atoi(argv[2]) : 1;
+        int num_threads = argc > 3 ? atoi(argv[3]) : 1;
+        int num_pipeline = argc > 4 ? atoi(argv[4]) : 1;
 
-        CountDownLatch allFinished(nClients);
+        CountDownLatch all_finished(num_clients);
 
         EventLoop loop;
         EventLoopThreadPool pool(&loop);
-        pool.set_num_threads(nThreads);
+        pool.set_num_threads(num_threads);
         pool.Start();
 
         boost::mt19937 rng;
         boost::uniform_int<> six(1, kRequests);
         boost::variate_generator<boost::mt19937&, boost::uniform_int<> > die(rng, six);
 
-        InetAddress serverAddr(argv[1], 8080);
+        InetAddress server_address(argv[1], 8081);
 
         boost::ptr_vector<RpcClient> clients;
-        for (int i = 0; i < nClients; ++i)
+        for (int i = 0; i < num_clients; ++i)
         {
-            clients.push_back(new RpcClient(pool.NextLoop(), &allFinished, i, die()));
-            clients.back().connect(serverAddr);
+            clients.push_back(new RpcClient(pool.NextLoop(), &all_finished, i, die()));
+            clients.back().connect(server_address);
         }
-        sleep(1);
 
         LOG(INFO) << "all connected";
         LOG_WARNING << "start";
 
         Timestamp start(Timestamp::Now());
-        for (int i = 0; i < nClients; ++i)
+        for (int i = 0; i < num_clients; ++i)
         {
-            for (int j = 0; j < nPipeLine; j++)
+            for (int j = 0; j < num_pipeline; j++)
                 clients[i].SendRequest();
         }
-        allFinished.Wait();
+        all_finished.Wait();
         Timestamp end(Timestamp::Now());
         LOG(INFO) << "all finished";
 
@@ -152,7 +151,7 @@ int main(int argc, char* argv[])
     }
     else
     {
-        printf("Usage: %s host_ip num_clients [num_threads [piplines]]\n", argv[0]);
+        printf("Usage: %s host_ip num_clients [num_threads [num_piplines]]\n", argv[0]);
     }
 }
 
