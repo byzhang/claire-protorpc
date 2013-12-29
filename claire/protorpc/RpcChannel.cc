@@ -249,6 +249,7 @@ private:
         client->set_connection_callback(
                 boost::bind(&Impl::OnConnection, this, _1));
         client->Connect(server_address);
+        client->set_retry(true);
     }
 
     void OnConnection(const HttpConnectionPtr& connection)

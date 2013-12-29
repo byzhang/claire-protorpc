@@ -1,5 +1,5 @@
 #include <examples/zipkin/sort.pb.h>
-#include <examples/zipkin/client.h>
+#include <examples/zipkin/stdsort_client.h>
 
 #include <boost/bind.hpp>
 
@@ -62,7 +62,7 @@ private:
         done(controller, &response);
     }
 
-    SortClient client_;
+    StdSortClient client_;
 };
 
 } // namespace sort

@@ -14,13 +14,13 @@ using namespace claire;
 
 namespace sort {
 
-class SortServiceImpl : public SortService
+class StdSortServiceImpl : public StdSortService
 {
 public:
-    virtual void Sort(RpcControllerPtr& controller,
-                      const ::sort::SortRequestPtr& request,
-                      const ::sort::SortResponse* response_protoType,
-                      const RpcDoneCallback& done)
+    virtual void StdSort(RpcControllerPtr& controller,
+                         const ::sort::SortRequestPtr& request,
+                         const ::sort::SortResponse* response_protoType,
+                         const RpcDoneCallback& done)
     {
         SortResponse response;
         std::vector<int32_t> v;
@@ -50,7 +50,7 @@ int main(int argc, char* argv[])
 
     EventLoop loop;
     InetAddress listen_address(8082);
-    sort::SortServiceImpl impl;
+    sort::StdSortServiceImpl impl;
     RpcServer server(&loop, listen_address);
     server.RegisterService(&impl);
     server.Start();

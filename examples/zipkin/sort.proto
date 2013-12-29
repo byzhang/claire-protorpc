@@ -14,3 +14,7 @@ service SortService {
   rpc Sort (SortRequest) returns (SortResponse);
 }
 
+service StdSortService {
+  rpc StdSort (SortRequest) returns (SortResponse);
+}
+

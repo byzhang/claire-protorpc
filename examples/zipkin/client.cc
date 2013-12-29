@@ -3,7 +3,7 @@
 #include <claire/common/tracing/Tracing.h>
 #include <claire/zipkin/ZipkinTracer.h>
 #include <claire/common/logging/Logging.h>
-#include <examples/zipkin/client.h>
+#include <examples/zipkin/sort_client.h>
 
 using namespace claire;
 
