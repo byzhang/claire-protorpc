@@ -6,9 +6,9 @@
 
 #include <gflags/gflags.h>
 
-DEFINE_bool(protorpc_healthy, true, "protorpc healthy status");
-
 namespace claire {
+
+static bool g_protorpc_healthy = true;
 
 void BuiltinServiceImpl::HeartBeat(RpcControllerPtr& controller,
                                    const HeartBeatRequestPtr& request,
@@ -16,7 +16,7 @@ void BuiltinServiceImpl::HeartBeat(RpcControllerPtr& controller,
                                    const RpcDoneCallback& done)
 {
     HeartBeatResponse response;
-    if (FLAGS_protorpc_healthy)
+    if (g_protorpc_healthy)
     {
         response.set_status("Ok");
     }

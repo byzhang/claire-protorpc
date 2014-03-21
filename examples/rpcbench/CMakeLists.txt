@@ -9,7 +9,7 @@ add_executable(echo_client client.cc)
 target_link_libraries(echo_client echo_proto
     claire_protorpc claire_netty claire_common
     gflags tcmalloc
-    boost_regex pthread)
+    boost_regex)
 
 add_executable(echo_server server.cc)
 target_link_libraries(echo_server echo_proto
