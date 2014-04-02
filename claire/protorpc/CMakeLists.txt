@@ -68,6 +68,7 @@ set(HEADERS
   RpcChannel.h
   RpcController.h
   RpcUtil.h
+  RpcAssets.h
   rpcmessage.proto
   builtin_service.proto
   ${PROJECT_BINARY_DIR}/claire/protorpc/rpcmessage.pb.h
