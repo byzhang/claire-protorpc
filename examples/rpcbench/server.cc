@@ -37,8 +37,9 @@ int main(int argc, char* argv[])
 
     EventLoop loop;
     InetAddress listen_address(8081);
+    InetAddress stats_address(8082);
     echo::EchoServiceImpl impl;
-    RpcServer server(&loop, listen_address);
+    RpcServer server(&loop, listen_address, stats_address);
     server.set_num_threads(FLAGS_num_threads);
     server.RegisterService(&impl);
     server.Start();

@@ -28,4 +28,4 @@ function(PROTOBUF_GENERATE_RPC SRCS)
 endfunction()
 
 add_subdirectory(rpcbench)
-add_subdirectory(zipkin)
+# add_subdirectory(zipkin)

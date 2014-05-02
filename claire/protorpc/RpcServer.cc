@@ -40,12 +40,13 @@ static const char* kRpcServicePath = "/__protorpc__";
 class RpcServer::Impl : boost::noncopyable
 {
 public:
-    Impl(EventLoop* loop, const InetAddress& listen_address)
+    Impl(EventLoop* loop, const InetAddress& listen_address, const InetAddress& stats_address)
         : loop_(loop),
           server_(loop, listen_address, "RpcServer"),
-          flags_(&server_),
-          pprof_(&server_),
-          statistics_(&server_),
+          internal_server_(loop, stats_address, "StatsServer"),
+          flags_(&internal_server_),
+          pprof_(&internal_server_),
+          statistics_(&internal_server_),
           total_request_("protorpc.RpcServer.total_request"),
           total_response_("protorpc.RpcServer.total_response"),
           failed_request_("protorpc.RpcServer.failed_request")
@@ -80,11 +81,13 @@ public:
 
         builtin_service_.set_services(services_);
         server_.Start();
+        internal_server_.Start();
     }
 
     void set_num_threads(int num_threads)
     {
         server_.set_num_threads(num_threads);
+        internal_server_.set_num_threads(num_threads);
     }
 
     void RegisterService(Service* service)
@@ -403,6 +406,7 @@ public:
 
     EventLoop* loop_;
     HttpServer server_;
+    HttpServer internal_server_;
     RpcCodec codec_;
 
     BuiltinServiceImpl builtin_service_;
@@ -417,8 +421,8 @@ public:
     Counter failed_request_;
 };
 
-RpcServer::RpcServer(EventLoop* loop, const InetAddress& listen_address)
-    : impl_(new Impl(loop, listen_address)) {}
+RpcServer::RpcServer(EventLoop* loop, const InetAddress& listen_address, const InetAddress& stats_address)
+    : impl_(new Impl(loop, listen_address, stats_address)) {}
 
 RpcServer::~RpcServer() {}
 

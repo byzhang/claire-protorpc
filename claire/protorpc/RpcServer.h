@@ -17,7 +17,7 @@ class InetAddress;
 class RpcServer : boost::noncopyable
 {
 public:
-    RpcServer(EventLoop* loop, const InetAddress& listen_address);
+    RpcServer(EventLoop* loop, const InetAddress& listen_address, const InetAddress& stats_address);
     ~RpcServer();
 
     void Start();
