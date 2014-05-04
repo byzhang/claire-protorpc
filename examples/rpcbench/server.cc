@@ -33,7 +33,7 @@ public:
 int main(int argc, char* argv[])
 {
     ::google::ParseCommandLineFlags(&argc, &argv, true);
-    InitClaireLogging(argv[0]);
+    ::google::InitGoogleLogging(argv[0]);
 
     EventLoop loop;
     InetAddress listen_address(8081);

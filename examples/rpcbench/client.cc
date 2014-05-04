@@ -101,7 +101,7 @@ private:
 int main(int argc, char* argv[])
 {
     ::google::ParseCommandLineFlags(&argc, &argv, true);
-    InitClaireLogging(argv[0]);
+    ::google::InitGoogleLogging(argv[0]);
 
     if (argc > 1)
     {
@@ -130,7 +130,7 @@ int main(int argc, char* argv[])
         }
 
         LOG(INFO) << "all connected";
-        LOG_WARNING << "start";
+        LOG(WARNING) << "start";
 
         Timestamp start(Timestamp::Now());
         for (int i = 0; i < num_clients; ++i)

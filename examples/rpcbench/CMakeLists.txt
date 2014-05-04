@@ -8,12 +8,12 @@ add_library(echo_proto ${PROTO_SRCS})
 add_executable(echo_client client.cc)
 target_link_libraries(echo_client echo_proto
     claire_protorpc claire_netty claire_common
-    gflags tcmalloc
+    gflags tcmalloc glog
     boost_regex)
 
 add_executable(echo_server server.cc)
 target_link_libraries(echo_server echo_proto
     claire_protorpc claire_netty claire_common
-    gflags tcmalloc profiler ctemplate
+    gflags tcmalloc profiler ctemplate glog
     boost_regex pthread)
 
