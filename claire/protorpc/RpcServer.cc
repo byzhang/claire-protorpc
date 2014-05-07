@@ -68,7 +68,6 @@ public:
                          boost::bind(&Impl::OnJson, this, _1),
                          true);
 
-        RegisterService(&builtin_service_);
     }
 
     void Start()
@@ -80,6 +79,7 @@ public:
         }
 
         builtin_service_.set_services(services_);
+        RegisterService(&builtin_service_);
         server_.Start();
         internal_server_.Start();
     }
