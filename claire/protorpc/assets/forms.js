@@ -189,7 +189,7 @@ function buildEnumField(form) {
     appendTo(form.input).
     attr('value', enumValue.name).
     text(enumValue.name).
-    attr('selected', enumValue.number == form.field.default_value);
+    attr('selected', enumValue.name == form.field.default_value);
   });
 }
 
